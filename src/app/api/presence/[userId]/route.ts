@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
 interface KolethPresenceData {
   user: {
@@ -13,8 +14,9 @@ interface KolethPresenceData {
   activities: any[];
 }
 
-const escapeXml = (unsafe: string) => {
-  return unsafe.replace(/[<>&'"]/g, (c) => {
+const escapeXml = (unsafe: string | null | undefined) => {
+  if (!unsafe) return "";
+  return String(unsafe).replace(/[<>&'"]/g, (c) => {
     switch (c) {
       case "<":
         return "&lt;";
@@ -107,6 +109,10 @@ export async function GET(
     const displayName = escapeXml(userObj.global_name || userObj.username || "Unknown System");
     const usernameText = escapeXml(userObj.username ? `@${userObj.username}` : "@system");
 
+    console.log("KolethPresenceData => User:", userObj);
+    console.log("KolethPresenceData => Status:", status);
+    console.log("KolethPresenceData => Activities:", activities);
+
     const statusColorMap: Record<string, string> = {
       online: "#23a559",
       idle: "#f1c40f",
@@ -127,10 +133,10 @@ export async function GET(
       statusColor: currentStatusColor,
       customStatus: customStatus ? escapeXml(customStatus.state || "") : null,
       spotify: spotifyActivity ? {
-        details: escapeXml((spotifyActivity as any).title || "Unknown Song"),
-        state: escapeXml((spotifyActivity as any).artist || "Unknown Artist"),
+        details: escapeXml(spotifyActivity.title ? String(spotifyActivity.title) : "Unknown Song"),
+        state: escapeXml(spotifyActivity.artist ? String(spotifyActivity.artist) : "Unknown Artist"),
       } : null,
-      activity: otherActivity as any,
+      activity: otherActivity || null,
     });
 
     return new NextResponse(svgContent, {
@@ -176,9 +182,9 @@ function generateSuccessSvg({
   spotify: { details: string; state: string; } | null;
   activity?: KolethPresenceData["activities"][0];
 }): string {
-  const actName = activity?.name ? escapeXml(activity.name) : null;
-  const actDetails = activity?.details ? escapeXml(activity.details) : null;
-  const actState = activity?.state ? escapeXml(activity.state) : null;
+  const actName = activity?.name ? escapeXml(String(activity.name)) : null;
+  const actDetails = activity?.details ? escapeXml(String(activity.details)) : null;
+  const actState = activity?.state ? escapeXml(String(activity.state)) : null;
 
   let storySvg = "";
   if (customStatus) {

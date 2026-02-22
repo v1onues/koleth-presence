@@ -1,0 +1,76 @@
+﻿
+> koleth-presence@0.1.0 start
+> next start
+
+Ôû▓ Next.js 16.1.6
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.135:3000
+
+Ô£ô Starting...
+Ô£ô Ready in 1426ms
+KolethPresenceData => User: {
+  id: '1295071083661361253',
+  username: 'vionues',
+  global_name: 'v1onuess',
+  avatar_url: 'https://cdn.discordapp.com/avatars/1295071083661361253/a_9ac6a8b6c4eb519932c62ae6cf888796.gif?size=1024'
+}
+KolethPresenceData => Status: dnd
+KolethPresenceData => Activities: [
+  {
+  name: 'rodyat.tech/dc',
+  type: 'custom',
+  state: 'rodyat.tech/dc',
+  emoji: null
+},
+  {
+  name: 'StatusAI',
+  type: 'playing',
+  details: 'explorer',
+  state: 'Ethereal - Slowed - "Txmy" dinliyor ­şÄğ',
+  large_image: 'https://cdn.discordapp.com/app-assets/1474903915765043374/1474912766824284200.png',
+  small_image: 'https://cdn.discordapp.com/app-assets/1474903915765043374/1474912766824284200.png'
+},
+  {
+  name: 'Spotify',
+  type: 'listening',
+  title: 'Ethereal - Slowed',
+  artist: 'Txmy',
+  track_id: '5BD0ZLn2avpICQJBjVZ8HQ',
+  album_cover: 'https://i.scdn.co/image/ab67616d0000b27359c1bcb0c473c27e247bf86a',
+  start: '2026-02-22T15:30:12.049000+00:00',
+  end: '2026-02-22T15:33:29.696000+00:00'
+}
+]
+KolethPresenceData => User: {
+  id: '1295071083661361253',
+  username: 'vionues',
+  global_name: 'v1onuess',
+  avatar_url: 'https://cdn.discordapp.com/avatars/1295071083661361253/a_9ac6a8b6c4eb519932c62ae6cf888796.gif?size=1024'
+}
+KolethPresenceData => Status: dnd
+KolethPresenceData => Activities: [
+  {
+  name: 'rodyat.tech/dc',
+  type: 'custom',
+  state: 'rodyat.tech/dc',
+  emoji: null
+},
+  {
+  name: 'StatusAI',
+  type: 'playing',
+  details: 'explorer',
+  state: 'Ethereal - Slowed - "Txmy" dinliyor ­şÄğ',
+  large_image: 'https://cdn.discordapp.com/app-assets/1474903915765043374/1474912766824284200.png',
+  small_image: 'https://cdn.discordapp.com/app-assets/1474903915765043374/1474912766824284200.png'
+},
+  {
+  name: 'Spotify',
+  type: 'listening',
+  title: 'Ethereal - Slowed',
+  artist: 'Txmy',
+  track_id: '5BD0ZLn2avpICQJBjVZ8HQ',
+  album_cover: 'https://i.scdn.co/image/ab67616d0000b27359c1bcb0c473c27e247bf86a',
+  start: '2026-02-22T15:30:12.049000+00:00',
+  end: '2026-02-22T15:33:29.696000+00:00'
+}
+]
