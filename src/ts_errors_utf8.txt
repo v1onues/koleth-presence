@@ -1,0 +1,2 @@
+﻿app/api/presence/[userId]/route.ts(95,12): error TS1127: Invalid character.
+app/api/presence/[userId]/route.ts(296,1): error TS1160: Unterminated template literal.

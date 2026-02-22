@@ -2,45 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "edge";
 
-interface DiscordUser {
-  id: string;
+interface KolethPresenceData {
+  status: "online" | "idle" | "dnd" | "offline";
   username: string;
   global_name: string | null;
-  avatar: string | null;
-  discriminator: string;
-}
-
-interface LanyardActivity {
-  type: number;
-  state?: string;
-  name: string;
-  id: string;
-  details?: string;
-  timestamps?: {
-    start?: number;
-    end?: number;
-  };
-  assets?: {
-    large_image?: string;
-    large_text?: string;
-    small_image?: string;
-    small_text?: string;
-  };
-}
-
-interface LanyardData {
-  discord_user: DiscordUser;
-  discord_status: "online" | "idle" | "dnd" | "offline";
-  activities: LanyardActivity[];
-}
-
-interface LanyardResponse {
-  success: boolean;
-  data?: LanyardData;
-  error?: {
-    message: string;
-    code: string;
-  };
+  avatar: string | null; // Full base64 or URL
+  activities: {
+    type: number;
+    name: string;
+    details?: string;
+    state?: string;
+    timestamps?: {
+      start?: number;
+      end?: number;
+    };
+    assets?: {
+      large_image?: string;
+      large_text?: string;
+      small_image?: string;
+      small_text?: string;
+    };
+  }[];
 }
 
 const escapeXml = (unsafe: string) => {
@@ -72,6 +54,7 @@ async function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 async function fetchImageAsBase64(url: string, fallbackUrl?: string): Promise<string> {
+  if (url.startsWith("data:image")) return url;
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -92,6 +75,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
+  // Although userId is in params, since the endpoint is currently hardcoded to koleth.net.tr/presence.json
+  // we might just fetch the single JSON file. If the JSON is meant to be user specific, 
+  // we could append it, but the prompt says 'direkt https://koleth.net.tr/presence.json adresinden veriyi çeksin'.
   const routeParams = await params;
   const userId = routeParams.userId;
 
@@ -100,33 +86,18 @@ export async function GET(
   }
 
   try {
-    const lanyardReq = await fetch(`https://api.lanyard.rest/v1/users/${userId}`);
-    const lanyardRes: LanyardResponse = await lanyardReq.json();
+    // Fetch custom presence JSON from Koleth endpoint
+    // The endpoint might be dynamic like /presence.json?id=... or just a single file.
+    // Based on user prompt: "direkt https://koleth.net.tr/presence.json adresinden veriyi çeksin"
+    const kolethReq = await fetch(`https://koleth.net.tr/api/statusai/presence.json`, {
+      headers: {
+        "User-Agent": "Koleth-Presence-Worker/1.0",
+      },
+      next: { revalidate: 30 }
+    });
 
-    let user: DiscordUser | null = null;
-    let status = "offline";
-    let activities: LanyardActivity[] = [];
-
-    if (lanyardRes.success && lanyardRes.data) {
-      user = lanyardRes.data.discord_user;
-      status = lanyardRes.data.discord_status;
-      activities = lanyardRes.data.activities;
-    } else {
-      const discordToken = process.env.DISCORD_TOKEN;
-      if (discordToken) {
-        const discordReq = await fetch(`https://discord.com/api/v10/users/${userId}`, {
-          headers: {
-            Authorization: `Bot ${discordToken}`,
-          },
-        });
-        if (discordReq.ok) {
-          user = await discordReq.json();
-        }
-      }
-    }
-
-    if (!user) {
-      return new NextResponse(generateErrorSvg("Koleth System: User Offline"), {
+    if (!kolethReq.ok) {
+      return new NextResponse(generateErrorSvg("Koleth System: Endpoint Down"), {
         headers: {
           "Content-Type": "image/svg+xml",
           "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
@@ -134,15 +105,28 @@ export async function GET(
       });
     }
 
-    const isGif = user.avatar?.startsWith("a_");
-    const avatarExt = isGif ? "gif" : "png";
-    const avatarUrl = user.avatar
-      ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${avatarExt}?size=128`
-      : `https://cdn.discordapp.com/embed/avatars/${parseInt(user.discriminator || "0") % 5}.png`;
+    const data: KolethPresenceData = await kolethReq.json();
+
+    // Mapping variables securely
+    const status = data.status || "offline";
+    const activities = data.activities || [];
+
+    // Process Avatar (Handle if it's already base64, a full URL, or just a hash)
+    let avatarUrl = data.avatar;
+    if (avatarUrl && !avatarUrl.startsWith("http") && !avatarUrl.startsWith("data:")) {
+      // Assuming it acts like a Discord hash if it's not a URL
+      const isGif = avatarUrl.startsWith("a_");
+      const avatarExt = isGif ? "gif" : "png";
+      avatarUrl = `https://cdn.discordapp.com/avatars/${userId}/${avatarUrl}.${avatarExt}?size=128`;
+    } else if (!avatarUrl) {
+      // Fallback
+      avatarUrl = `https://cdn.discordapp.com/embed/avatars/0.png`;
+    }
+
     const avatarBase64 = await fetchImageAsBase64(avatarUrl);
 
-    const displayName = escapeXml(user.global_name || user.username);
-    const usernameText = escapeXml(`@${user.username}`);
+    const displayName = escapeXml(data.global_name || data.username || "Unknown System");
+    const usernameText = escapeXml(data.username ? `@${data.username}` : "@system");
 
     const statusColorMap: Record<string, string> = {
       online: "#23a559",
@@ -152,8 +136,10 @@ export async function GET(
     };
     const currentStatusColor = statusColorMap[status] || statusColorMap.offline;
 
+    // Advanced Activity Sorting
     const customStatus = activities.find((a) => a.type === 4);
-    const mainActivity = activities.find((a) => a.type !== 4);
+    const spotifyActivity = activities.find((a) => a.name === "Spotify");
+    const otherActivity = activities.find((a) => a.type !== 4 && a.name !== "Spotify");
 
     const svgContent = generateSuccessSvg({
       displayName,
@@ -161,7 +147,11 @@ export async function GET(
       avatarBase64,
       statusColor: currentStatusColor,
       customStatus: customStatus ? escapeXml(customStatus.state || "") : null,
-      activity: mainActivity,
+      spotify: spotifyActivity ? {
+        details: escapeXml(spotifyActivity.details || "Unknown Song"),
+        state: escapeXml(spotifyActivity.state || "Unknown Artist"),
+      } : null,
+      activity: otherActivity,
     });
 
     return new NextResponse(svgContent, {
@@ -172,7 +162,7 @@ export async function GET(
     });
   } catch (error) {
     console.error("Error generating presence SVG:", error);
-    return new NextResponse(generateErrorSvg("Koleth System: Error Generating Profile"), {
+    return new NextResponse(generateErrorSvg("Koleth System: Parse Error"), {
       headers: {
         "Content-Type": "image/svg+xml",
         "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
@@ -196,6 +186,7 @@ function generateSuccessSvg({
   avatarBase64,
   statusColor,
   customStatus,
+  spotify,
   activity,
 }: {
   displayName: string;
@@ -203,37 +194,48 @@ function generateSuccessSvg({
   avatarBase64: string;
   statusColor: string;
   customStatus: string | null;
-  activity?: LanyardActivity;
+  spotify: { details: string; state: string; } | null;
+  activity?: KolethPresenceData["activities"][0];
 }): string {
   const actName = activity?.name ? escapeXml(activity.name) : null;
   const actDetails = activity?.details ? escapeXml(activity.details) : null;
   const actState = activity?.state ? escapeXml(activity.state) : null;
 
+  let storySvg = "";
+  if (customStatus) {
+    storySvg = `
+      <text x="150" y="38" fill="#e1e1e6" font-style="italic" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14">“${customStatus}”</text>
+    `;
+  }
+
   let activitySvg = "";
   if (actName) {
     activitySvg = `
-      <g transform="translate(150, 100)">
-        <rect width="4" height="40" rx="2" fill="#8b5cf6" />
-        <text x="14" y="10" fill="#a855f7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="bold">${actName}</text>
-        ${actDetails ? `<text x="14" y="26" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12">${actDetails}</text>` : ""}
-        ${actState ? `<text x="14" y="${actDetails ? "42" : "26"}" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12">${actState}</text>` : ""}
-      </g>
-    `;
-  } else if (customStatus) {
-    activitySvg = `
-      <g transform="translate(150, 100)">
-        <text x="0" y="10" fill="#e1e1e6" font-style="italic" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">${customStatus}</text>
-      </g>
-    `;
-  } else {
-    activitySvg = `
-      <g transform="translate(150, 100)">
-        <text x="0" y="10" fill="#80848e" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">No active status</text>
+      <g transform="translate(150, 110)">
+        <text x="0" y="10" fill="#a855f7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="bold">${actName}</text>
+        ${actDetails ? `<text x="0" y="26" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12">${actDetails}</text>` : ""}
+        ${actState ? `<text x="0" y="${actDetails ? "42" : "26"}" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12">${actState}</text>` : ""}
       </g>
     `;
   }
 
-  // To properly mask a rounded image in SVG, we use clipPath or pattern. pattern is safer across SVG renderers.
+  let spotifySvg = "";
+  if (spotify) {
+    // Spotify Icon Path (Simple generic music note / Spotify circle)
+    const spotifyIcon = `<path fill="#1DB954" d="M16 0C7.163 0 0 7.163 0 16s7.163 16 16 16 16-7.163 16-16S24.837 0 16 0zm7.327 23.139c-.198.324-.616.425-.94.227-2.583-1.579-5.83-1.936-9.663-1.06-.356.082-.71-.141-.792-.497-.082-.356.141-.71.497-.792 4.194-.959 7.787-.552 10.67 1.21.325.197.426.616.228.912zm1.341-3.003c-.247.404-.766.53-1.171.282-2.964-1.823-7.509-2.378-10.978-1.325-.453.138-.925-.119-1.063-.572-.138-.453.119-.925.572-1.063 3.961-1.201 9.006-.578 12.359 1.483.404.249.531.768.281 1.195zm.116-3.138c-3.551-2.108-9.407-2.302-12.793-1.275-.54.164-1.109-.142-1.274-.682-.164-.54.142-1.109.682-1.274 3.963-1.203 10.457-.969 14.613 1.499.488.29.646.916.355 1.405-.29.489-.916.647-1.405.355z" />`;
+    // Place at bottom right or bottom left. Bottom right might overlap, let's put it aligned to the left under main name.
+    spotifySvg = `
+      <g transform="translate(150, 145)">
+        <g transform="scale(0.6)">${spotifyIcon}</g>
+        <text x="24" y="14" fill="#1DB954" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Dinliyor: </text>
+        <text x="80" y="14" fill="#e1e1e6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">${spotify.details} - ${spotify.state}</text>
+      </g>
+    `;
+  }
+
+  // Adjust Y positions of main text based on the presence of storytelling
+  const mainY = customStatus ? 65 : 55;
+
   return `<svg width="500" height="180" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
     <defs>
       <clipPath id="avatar-clip">
@@ -265,11 +267,13 @@ function generateSuccessSvg({
     <circle cx="113" cy="123" r="16" fill="#0A0A0E" />
     <circle cx="113" cy="123" r="12" fill="${statusColor}" />
 
-    <!-- Name and Discriminator -->
-    <text x="150" y="65" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="800">${displayName}</text>
-    <text x="150" y="85" fill="#A8A8B3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500">${usernameText}</text>
+    <!-- Name and Storytelling -->
+    ${storySvg}
+    <text x="150" y="${mainY}" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="800">${displayName}</text>
+    <text x="150" y="${mainY + 20}" fill="#A8A8B3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500">${usernameText}</text>
     
     <!-- Activity Area -->
     ${activitySvg}
+    ${spotifySvg}
   </svg>`;
 }
