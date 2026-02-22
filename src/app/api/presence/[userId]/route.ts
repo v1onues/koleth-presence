@@ -83,14 +83,17 @@ export async function GET(
       headers: {
         "User-Agent": "Koleth-Presence-Worker/1.0",
       },
-      next: { revalidate: 30 }
+      cache: "no-store"
     });
 
     if (!kolethReq.ok) {
       return new NextResponse(generateErrorSvg("Koleth System: Endpoint Down"), {
         headers: {
           "Content-Type": "image/svg+xml",
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
+          "Cache-Control": "no-cache, no-store, must-revalidate, proxy-revalidate",
+          "Pragma": "no-cache",
+          "Expires": "0",
+          "Surrogate-Control": "no-store",
         },
       });
     }
@@ -142,7 +145,10 @@ export async function GET(
     return new NextResponse(svgContent, {
       headers: {
         "Content-Type": "image/svg+xml",
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
+        "Cache-Control": "no-cache, no-store, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Surrogate-Control": "no-store",
       },
     });
   } catch (error) {
@@ -150,7 +156,10 @@ export async function GET(
     return new NextResponse(generateErrorSvg("Koleth System: Parse Error"), {
       headers: {
         "Content-Type": "image/svg+xml",
-        "Cache-Control": "public, s-maxage=60, stale-while-revalidate=30",
+        "Cache-Control": "no-cache, no-store, must-revalidate, proxy-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Surrogate-Control": "no-store",
       },
     });
   }
