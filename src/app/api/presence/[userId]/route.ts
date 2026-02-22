@@ -65,11 +65,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
 ) {
-  // Although userId is in params, since the endpoint is currently hardcoded to koleth.net.tr/presence.json
-  // we might just fetch the single JSON file. If the JSON is meant to be user specific, 
-  // we could append it, but the prompt says 'direkt https://koleth.net.tr/presence.json adresinden veriyi çeksin'.
   const routeParams = await params;
   const userId = routeParams.userId;
+  const theme = request.nextUrl.searchParams.get("theme");
 
   if (!userId) {
     return new NextResponse("User ID is required", { status: 400 });
@@ -140,6 +138,7 @@ export async function GET(
         state: escapeXml(spotifyActivity.artist ? String(spotifyActivity.artist) : "Unknown Artist"),
       } : null,
       activity: otherActivity || null,
+      theme,
     });
 
     return new NextResponse(svgContent, {
@@ -182,6 +181,7 @@ function generateSuccessSvg({
   customStatus,
   spotify,
   activity,
+  theme,
 }: {
   displayName: string;
   usernameText: string;
@@ -190,7 +190,27 @@ function generateSuccessSvg({
   customStatus: string | null;
   spotify: { details: string; state: string; } | null;
   activity?: KolethPresenceData["activities"][0];
+  theme?: string | null;
 }): string {
+  const is8bit = theme === "8bit";
+  const fontFamily = is8bit
+    ? "'Press Start 2P', monospace"
+    : "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
+  const fontStyles = is8bit
+    ? `<style>
+         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;display=swap');
+       </style>`
+    : "";
+
+  const nameSize = is8bit ? 14 : 22;
+  const tagSize = is8bit ? 8 : 12;
+  const storySize = is8bit ? 9 : 13;
+  const actNameSize = is8bit ? 10 : 13;
+  const actDetailSize = is8bit ? 9 : 12;
+  const actStateSize = is8bit ? 9 : 12;
+  const spotifyDetailSize = is8bit ? 9 : 12;
+
   const actName = activity?.name ? escapeXml(String(activity.name)) : null;
   const actDetails = activity?.details ? escapeXml(String(activity.details)) : null;
   const actState = activity?.state ? escapeXml(String(activity.state)) : null;
@@ -198,18 +218,16 @@ function generateSuccessSvg({
   let storySvg = "";
   if (customStatus) {
     storySvg = `
-      <text x="150" y="38" fill="#e1e1e6" font-style="italic" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14">“${customStatus}”</text>
+      <text x="150" y="28" fill="#e1e1e6" font-style="italic" font-family="${fontFamily}" font-size="${storySize}">“${customStatus}”</text>
     `;
   }
 
   let activitySvg = "";
   if (actName) {
     activitySvg = `
-      <g transform="translate(150, 110)">
-        <text x="0" y="10" fill="#a855f7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="bold">${actName}</text>
-        ${actDetails ? `<text x="0" y="26" fill="#cbd5e1" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12">${actDetails}</text>` : ""}
-        ${actState ? `<text x="0" y="${actDetails ? "42" : "26"}" fill="#94a3b8" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12">${actState}</text>` : ""}
-      </g>
+      <text x="150" y="85" fill="#a855f7" font-family="${fontFamily}" font-size="${actNameSize}" font-weight="bold">${actName}</text>
+      ${actDetails ? `<text x="150" y="110" fill="#cbd5e1" font-family="${fontFamily}" font-size="${actDetailSize}">${actDetails}</text>` : ""}
+      ${actState ? `<text x="150" y="${actDetails ? "125" : "110"}" fill="#94a3b8" font-family="${fontFamily}" font-size="${actStateSize}">${actState}</text>` : ""}
     `;
   }
 
@@ -217,20 +235,22 @@ function generateSuccessSvg({
   if (spotify) {
     // Spotify Icon Path (Simple generic music note / Spotify circle)
     const spotifyIcon = `<path fill="#1DB954" d="M16 0C7.163 0 0 7.163 0 16s7.163 16 16 16 16-7.163 16-16S24.837 0 16 0zm7.327 23.139c-.198.324-.616.425-.94.227-2.583-1.579-5.83-1.936-9.663-1.06-.356.082-.71-.141-.792-.497-.082-.356.141-.71.497-.792 4.194-.959 7.787-.552 10.67 1.21.325.197.426.616.228.912zm1.341-3.003c-.247.404-.766.53-1.171.282-2.964-1.823-7.509-2.378-10.978-1.325-.453.138-.925-.119-1.063-.572-.138-.453.119-.925.572-1.063 3.961-1.201 9.006-.578 12.359 1.483.404.249.531.768.281 1.195zm.116-3.138c-3.551-2.108-9.407-2.302-12.793-1.275-.54.164-1.109-.142-1.274-.682-.164-.54.142-1.109.682-1.274 3.963-1.203 10.457-.969 14.613 1.499.488.29.646.916.355 1.405-.29.489-.916.647-1.405.355z" />`;
-    // Place at bottom right or bottom left. Bottom right might overlap, let's put it aligned to the left under main name.
     spotifySvg = `
       <g transform="translate(150, 145)">
-        <g transform="scale(0.6)">${spotifyIcon}</g>
-        <text x="24" y="14" fill="#1DB954" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600">Dinliyor: </text>
-        <text x="80" y="14" fill="#e1e1e6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">${spotify.details} - ${spotify.state}</text>
+        <g transform="translate(0, -12) scale(0.6)">${spotifyIcon}</g>
+        <text x="24" y="0" font-family="${fontFamily}" font-size="${spotifyDetailSize}">
+          <tspan fill="#1DB954" font-weight="600">Dinliyor: </tspan>
+          <tspan fill="#e1e1e6">${spotify.details} - ${spotify.state}</tspan>
+        </text>
       </g>
     `;
   }
 
   // Adjust Y positions of main text based on the presence of storytelling
-  const mainY = customStatus ? 65 : 55;
+  const mainY = 55;
 
   return `<svg width="500" height="180" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    ${fontStyles}
     <defs>
       <clipPath id="avatar-clip">
         <circle cx="80" cy="90" r="45" />
@@ -263,8 +283,8 @@ function generateSuccessSvg({
 
     <!-- Name and Storytelling -->
     ${storySvg}
-    <text x="150" y="${mainY}" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="28" font-weight="800">${displayName}</text>
-    <text x="150" y="${mainY + 20}" fill="#A8A8B3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="500">${usernameText}</text>
+    <text x="150" y="${mainY}" fill="#FFFFFF" font-family="${fontFamily}" font-size="${nameSize}" font-weight="800">${displayName}</text>
+    <text x="150" y="${mainY + 18}" fill="#A8A8B3" font-family="${fontFamily}" font-size="${tagSize}" font-weight="500">${usernameText}</text>
     
     <!-- Activity Area -->
     ${activitySvg}
