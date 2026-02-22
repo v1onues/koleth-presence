@@ -3,26 +3,14 @@ import { NextRequest, NextResponse } from "next/server";
 export const runtime = "edge";
 
 interface KolethPresenceData {
+  user: {
+    id: string;
+    username: string;
+    global_name: string | null;
+    avatar_url: string | null;
+  };
   status: "online" | "idle" | "dnd" | "offline";
-  username: string;
-  global_name: string | null;
-  avatar: string | null; // Full base64 or URL
-  activities: {
-    type: number;
-    name: string;
-    details?: string;
-    state?: string;
-    timestamps?: {
-      start?: number;
-      end?: number;
-    };
-    assets?: {
-      large_image?: string;
-      large_text?: string;
-      small_image?: string;
-      small_text?: string;
-    };
-  }[];
+  activities: any[];
 }
 
 const escapeXml = (unsafe: string) => {
@@ -107,26 +95,17 @@ export async function GET(
 
     const data: KolethPresenceData = await kolethReq.json();
 
-    // Mapping variables securely
+    const userObj = data.user || {} as any;
     const status = data.status || "offline";
     const activities = data.activities || [];
 
-    // Process Avatar (Handle if it's already base64, a full URL, or just a hash)
-    let avatarUrl = data.avatar;
-    if (avatarUrl && !avatarUrl.startsWith("http") && !avatarUrl.startsWith("data:")) {
-      // Assuming it acts like a Discord hash if it's not a URL
-      const isGif = avatarUrl.startsWith("a_");
-      const avatarExt = isGif ? "gif" : "png";
-      avatarUrl = `https://cdn.discordapp.com/avatars/${userId}/${avatarUrl}.${avatarExt}?size=128`;
-    } else if (!avatarUrl) {
-      // Fallback
-      avatarUrl = `https://cdn.discordapp.com/embed/avatars/0.png`;
-    }
+    // Process Avatar
+    let avatarUrl = userObj.avatar_url;
 
-    const avatarBase64 = await fetchImageAsBase64(avatarUrl);
+    const avatarBase64 = await fetchImageAsBase64(avatarUrl || `https://cdn.discordapp.com/embed/avatars/0.png`);
 
-    const displayName = escapeXml(data.global_name || data.username || "Unknown System");
-    const usernameText = escapeXml(data.username ? `@${data.username}` : "@system");
+    const displayName = escapeXml(userObj.global_name || userObj.username || "Unknown System");
+    const usernameText = escapeXml(userObj.username ? `@${userObj.username}` : "@system");
 
     const statusColorMap: Record<string, string> = {
       online: "#23a559",
@@ -136,10 +115,10 @@ export async function GET(
     };
     const currentStatusColor = statusColorMap[status] || statusColorMap.offline;
 
-    // Advanced Activity Sorting
-    const customStatus = activities.find((a) => a.type === 4);
-    const spotifyActivity = activities.find((a) => a.name === "Spotify");
-    const otherActivity = activities.find((a) => a.type !== 4 && a.name !== "Spotify");
+    // Advanced Activity Sorting based on the exact JSON schema provided
+    const customStatus = activities.find((a: any) => a.type === "custom");
+    const spotifyActivity = activities.find((a: any) => a.name === "Spotify");
+    const otherActivity = activities.find((a: any) => a.type !== "custom" && a.name !== "Spotify");
 
     const svgContent = generateSuccessSvg({
       displayName,
@@ -148,10 +127,10 @@ export async function GET(
       statusColor: currentStatusColor,
       customStatus: customStatus ? escapeXml(customStatus.state || "") : null,
       spotify: spotifyActivity ? {
-        details: escapeXml(spotifyActivity.details || "Unknown Song"),
-        state: escapeXml(spotifyActivity.state || "Unknown Artist"),
+        details: escapeXml((spotifyActivity as any).title || "Unknown Song"),
+        state: escapeXml((spotifyActivity as any).artist || "Unknown Artist"),
       } : null,
-      activity: otherActivity,
+      activity: otherActivity as any,
     });
 
     return new NextResponse(svgContent, {
